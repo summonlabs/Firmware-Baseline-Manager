@@ -1,0 +1,42 @@
+# Build trees
+build/
+build-*/
+out/
+install/
+_staging/
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+*.cmake.stamp
+# Compilers / linkers
+*.obj
+*.o
+*.lo
+*.a
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.idb
+*.dll
+*.so
+*.dylib
+*.exe
+*.dSYM/
+# Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+# Local runtime state produced by the CLI
+*.fbm-store/

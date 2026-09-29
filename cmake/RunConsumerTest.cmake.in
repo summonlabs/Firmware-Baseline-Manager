@@ -1,0 +1,67 @@
+# Packaging proof: configure, build, and run an out-of-tree consumer of the
+# installed FirmwareBaselineManager package using find_package(FirmwareBaselineManager).
+#
+# Driven by CTest as the "fbm.packaging.consumer" test. The install prefix and
+# the consumer source tree are baked in at configure time so that this test
+# exercises the exact artifacts produced by the current build.
+
+set(FBM_SOURCE_DIR "@CMAKE_CURRENT_SOURCE_DIR@")
+set(FBM_BINARY_DIR "@CMAKE_CURRENT_BINARY_DIR@")
+set(FBM_GENERATOR "@CMAKE_GENERATOR@")
+set(FBM_BUILD_TYPE "@CMAKE_BUILD_TYPE@")
+set(FBM_CXX_COMPILER "@CMAKE_CXX_COMPILER@")
+
+set(prefix "${FBM_BINARY_DIR}/packaging/prefix")
+set(consumer_build "${FBM_BINARY_DIR}/packaging/consumer-build")
+set(consumer_src "${FBM_SOURCE_DIR}/examples/consumer")
+
+file(REMOVE_RECURSE "${FBM_BINARY_DIR}/packaging")
+
+set(install_cmd "${CMAKE_COMMAND}" --install "${FBM_BINARY_DIR}" --prefix "${prefix}")
+if(NOT "${FBM_BUILD_TYPE}" STREQUAL "")
+  list(APPEND install_cmd --config "${FBM_BUILD_TYPE}")
+endif()
+execute_process(COMMAND ${install_cmd} RESULT_VARIABLE install_rc
+                OUTPUT_VARIABLE install_out ERROR_VARIABLE install_err)
+if(NOT install_rc EQUAL 0)
+  message(FATAL_ERROR "install step failed (${install_rc})\n${install_out}\n${install_err}")
+endif()
+
+set(cfg_cmd "${CMAKE_COMMAND}" -S "${consumer_src}" -B "${consumer_build}"
+            "-DCMAKE_PREFIX_PATH=${prefix}" "-DCMAKE_BUILD_TYPE=${FBM_BUILD_TYPE}")
+if(NOT "${FBM_GENERATOR}" STREQUAL "")
+  list(APPEND cfg_cmd -G "${FBM_GENERATOR}")
+endif()
+if(NOT "${FBM_CXX_COMPILER}" STREQUAL "")
+  list(APPEND cfg_cmd "-DCMAKE_CXX_COMPILER=${FBM_CXX_COMPILER}")
+endif()
+execute_process(COMMAND ${cfg_cmd} RESULT_VARIABLE cfg_rc
+                OUTPUT_VARIABLE cfg_out ERROR_VARIABLE cfg_err)
+if(NOT cfg_rc EQUAL 0)
+  message(FATAL_ERROR "consumer configure failed (${cfg_rc})\n${cfg_out}\n${cfg_err}")
+endif()
+
+set(build_cmd "${CMAKE_COMMAND}" --build "${consumer_build}")
+if(NOT "${FBM_BUILD_TYPE}" STREQUAL "")
+  list(APPEND build_cmd --config "${FBM_BUILD_TYPE}")
+endif()
+execute_process(COMMAND ${build_cmd} RESULT_VARIABLE build_rc
+                OUTPUT_VARIABLE build_out ERROR_VARIABLE build_err)
+if(NOT build_rc EQUAL 0)
+  message(FATAL_ERROR "consumer build failed (${build_rc})\n${build_out}\n${build_err}")
+endif()
+
+find_program(FBM_CONSUMER_EXE
+  NAMES fbm_consumer fbm_consumer.exe
+  PATHS "${consumer_build}" "${consumer_build}/Release" "${consumer_build}/Debug"
+  NO_DEFAULT_PATH)
+if(NOT FBM_CONSUMER_EXE)
+  message(FATAL_ERROR "consumer executable not found under ${consumer_build}")
+endif()
+
+execute_process(COMMAND "${FBM_CONSUMER_EXE}" "${consumer_build}/consumer-scratch"
+                RESULT_VARIABLE run_rc OUTPUT_VARIABLE run_out ERROR_VARIABLE run_err)
+if(NOT run_rc EQUAL 0)
+  message(FATAL_ERROR "consumer run failed (${run_rc})\n${run_out}\n${run_err}")
+endif()
+message(STATUS "consumer output:\n${run_out}")
