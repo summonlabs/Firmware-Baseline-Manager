@@ -46,7 +46,7 @@ hardware, and never executes maintenance.
   evidence submitted by an external observer.
 - It does not own vendor update services, update packages, or signing keys.
 - It does not own hardware lifecycle, maintenance windows, capacity, or
-  topology. Those arrive as facility gates owned by other DCCP repositories.
+  topology. Those arrive as facility gates owned by other facility repositories.
 - It does not own physical asset identity, rack layout, or site topology.
 - It does not decide that a rollout should happen; it decides whether a
   rollout is **eligible**, which is a different and strictly weaker claim.
