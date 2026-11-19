@@ -11,11 +11,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "check.hpp"
@@ -194,6 +196,43 @@ FBM_TEST(store_alternates_slots_and_keeps_the_previous_generation_readable) {
   CHECK(!reopened.value()->recovery().unpublished_slot_present);
   CHECK_EQ(reopened.value()->snapshot().commit_sequence.value(), 4u);
   CHECK_EQ(reopened.value()->snapshot().revision.value(), 4u);
+}
+
+FBM_TEST(store_commit_waits_for_a_reader_of_the_fence) {
+  const std::filesystem::path directory = scratch_directory("store-fence-reader");
+  StoreOptions options;
+  options.directory = directory;
+  options.create_if_missing = true;
+  auto store = DurableStore::open(options);
+  CHECK_OK(store);
+  Snapshot first_next = store.value()->snapshot();
+  first_next.revision = Revision{1};
+  auto first = store.value()->commit(std::move(first_next));
+  CHECK_OK(first);
+
+  // A reader has the fence open for a moment (an inspection, a backup, a scan)
+  // while the next commit replaces it.
+  std::ifstream reader(StorePaths::for_directory(directory).fence_file, std::ios::binary);
+  const bool reader_open = static_cast<bool>(reader);
+  std::thread release([&reader] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    reader.close();
+  });
+  Snapshot second_next = store.value()->snapshot();
+  second_next.revision = Revision{2};
+  auto second = store.value()->commit(std::move(second_next));
+  release.join();
+  CHECK(reader_open);
+  CHECK_OK(second);
+  CHECK_EQ(store.value()->snapshot().commit_sequence.value(), 2u);
+
+  store.value().reset();
+  auto reopened = DurableStore::open(options);
+  CHECK_OK(reopened);
+  CHECK(reopened.value()->recovery().outcome == RecoveryOutcome::Recovered);
+  CHECK(!reopened.value()->recovery().unpublished_slot_present);
+  CHECK_EQ(reopened.value()->snapshot().commit_sequence.value(), 2u);
+  CHECK_EQ(reopened.value()->snapshot().revision.value(), 2u);
 }
 
 FBM_TEST(store_writer_lock_excludes_a_second_writer_in_the_same_process) {

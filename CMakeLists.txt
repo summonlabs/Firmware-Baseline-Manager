@@ -54,11 +54,12 @@ endfunction()
 # message, instead of a link error hundreds of build steps later.
 if(FBM_ENABLE_SANITIZERS AND MSVC)
   include(CheckCXXSourceCompiles)
+  # The sanitizer is a compile option: the compiler records the runtime
+  # libraries in the object file, and the linker does not know the flag
+  # (LNK4044), so the probe links without it.
   set(CMAKE_REQUIRED_FLAGS "/fsanitize=address")
-  set(CMAKE_REQUIRED_LINK_OPTIONS "/fsanitize=address")
   check_cxx_source_compiles("int main() { return 0; }" FBM_MSVC_ASAN_AVAILABLE)
   unset(CMAKE_REQUIRED_FLAGS)
-  unset(CMAKE_REQUIRED_LINK_OPTIONS)
   if(NOT FBM_MSVC_ASAN_AVAILABLE)
     message(FATAL_ERROR
       "FBM_ENABLE_SANITIZERS=ON, but this MSVC toolchain cannot link an "
@@ -78,7 +79,8 @@ function(fbm_sanitizers target)
     # the strict warning policy turns into an error, and an ASan report without
     # line information is far less useful.
     target_compile_options(${target} PRIVATE /fsanitize=address /Zi)
-    target_link_options(${target} PRIVATE /fsanitize=address /DEBUG)
+    # The linker does not know /fsanitize=address (LNK4044).
+    target_link_options(${target} PRIVATE /INCREMENTAL:NO /DEBUG)
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
     target_link_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
@@ -237,6 +239,20 @@ if(BUILD_TESTING)
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     ENVIRONMENT "FBM_TEST_SCRATCH=$<SHELL_PATH:${CMAKE_CURRENT_BINARY_DIR}/test-scratch>")
 
+  # A library built with a sanitizer links only into a consumer built with it,
+  # so the consumer of the installed package is given the same flags.
+  set(FBM_CONSUMER_CXX_FLAGS "")
+  set(FBM_CONSUMER_LINK_FLAGS "")
+  if(FBM_ENABLE_SANITIZERS)
+    if(MSVC)
+      set(FBM_CONSUMER_CXX_FLAGS "/fsanitize=address /Zi")
+      set(FBM_CONSUMER_LINK_FLAGS "/INCREMENTAL:NO /DEBUG")
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      set(FBM_CONSUMER_CXX_FLAGS
+          "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all")
+      set(FBM_CONSUMER_LINK_FLAGS "${FBM_CONSUMER_CXX_FLAGS}")
+    endif()
+  endif()
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunConsumerTest.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/RunConsumerTest.cmake"

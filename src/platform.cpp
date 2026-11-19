@@ -657,13 +657,30 @@ Status atomic_replace(const std::filesystem::path& source,
   // MoveFileExW with both flags is a same-volume rename: the destination either
   // holds its previous contents or the new contents and never a mixture, and it
   // works whether or not the destination already exists.
-  if (::MoveFileExW(source.c_str(), destination.c_str(),
-                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0) {
-    const int error = static_cast<int>(::GetLastError());
-    return make_error(ErrorCode::IoAtomicReplaceFailed, "atomic_replace: MoveFileExW", error,
-                      destination);
+  //
+  // While a reader has the destination open (an inspection, a backup, an
+  // antivirus or indexing scan) the replace fails until the reader closes it,
+  // so it is retried for a bounded time (about 2 s). A directory or a read-only
+  // file in the way is not transient and fails at once.
+  for (int attempt = 0;; ++attempt) {
+    if (::MoveFileExW(source.c_str(), destination.c_str(),
+                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0) {
+      return ok_status();
+    }
+    const DWORD last = ::GetLastError();
+    const DWORD attributes = ::GetFileAttributesW(destination.c_str());
+    const bool blocked =
+        attributes != INVALID_FILE_ATTRIBUTES &&
+        (attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY)) != 0;
+    const bool transient = (last == ERROR_ACCESS_DENIED || last == ERROR_SHARING_VIOLATION ||
+                            last == ERROR_LOCK_VIOLATION) &&
+                           !blocked;
+    if (!transient || attempt >= 100) {
+      return make_error(ErrorCode::IoAtomicReplaceFailed, "atomic_replace: MoveFileExW",
+                        static_cast<int>(last), destination);
+    }
+    ::Sleep(20);
   }
-  return ok_status();
 #else
   if (::rename(source.c_str(), destination.c_str()) != 0) {
     const int error = errno;

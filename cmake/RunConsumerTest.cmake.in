@@ -10,6 +10,8 @@ set(FBM_BINARY_DIR "@CMAKE_CURRENT_BINARY_DIR@")
 set(FBM_GENERATOR "@CMAKE_GENERATOR@")
 set(FBM_BUILD_TYPE "@CMAKE_BUILD_TYPE@")
 set(FBM_CXX_COMPILER "@CMAKE_CXX_COMPILER@")
+set(FBM_CONSUMER_CXX_FLAGS "@FBM_CONSUMER_CXX_FLAGS@")
+set(FBM_CONSUMER_LINK_FLAGS "@FBM_CONSUMER_LINK_FLAGS@")
 
 set(prefix "${FBM_BINARY_DIR}/packaging/prefix")
 set(consumer_build "${FBM_BINARY_DIR}/packaging/consumer-build")
@@ -34,6 +36,21 @@ if(NOT "${FBM_GENERATOR}" STREQUAL "")
 endif()
 if(NOT "${FBM_CXX_COMPILER}" STREQUAL "")
   list(APPEND cfg_cmd "-DCMAKE_CXX_COMPILER=${FBM_CXX_COMPILER}")
+endif()
+# The sanitizer flags of the library, when it was built with any. The
+# per-configuration link flags come last on the link line, so that is where a
+# flag such as /INCREMENTAL:NO has to go to take effect.
+if(NOT "${FBM_CONSUMER_CXX_FLAGS}" STREQUAL "")
+  list(APPEND cfg_cmd "-DCMAKE_CXX_FLAGS_INIT=${FBM_CONSUMER_CXX_FLAGS}")
+endif()
+if(NOT "${FBM_CONSUMER_LINK_FLAGS}" STREQUAL "")
+  if("${FBM_BUILD_TYPE}" STREQUAL "")
+    list(APPEND cfg_cmd "-DCMAKE_EXE_LINKER_FLAGS_INIT=${FBM_CONSUMER_LINK_FLAGS}")
+  else()
+    string(TOUPPER "${FBM_BUILD_TYPE}" FBM_BUILD_TYPE_UPPER)
+    list(APPEND cfg_cmd
+         "-DCMAKE_EXE_LINKER_FLAGS_${FBM_BUILD_TYPE_UPPER}=${FBM_CONSUMER_LINK_FLAGS}")
+  endif()
 endif()
 execute_process(COMMAND ${cfg_cmd} RESULT_VARIABLE cfg_rc
                 OUTPUT_VARIABLE cfg_out ERROR_VARIABLE cfg_err)
